@@ -17,7 +17,6 @@ class UserRepository:
 
     def add(self, user: User) -> bool:
         r = self.get(user.username)
-        print(r)
         if self.get(user.username) is not None:
             return False
         return self.__redis.set(f'user:{user.username}', user.model_dump_json())
@@ -26,12 +25,9 @@ class UserRepository:
         return self.__redis.set(f'user:{user.username}', user.model_dump_json())
 
     def get_users(self, template: str, func=lambda _: True) -> list[User]:
-        try:
-            keys = [key for key in self.__redis.scan_iter(template)]
-            data = [self.__redis.get(k) for k in keys]
-            data = [User.model_validate_json(k) for k in data]
-            data = [k for k in data if func(k)]
-            return data
-        except Exception as e:
-            print(e)
-            return []
+
+        keys = [key for key in self.__redis.scan_iter(template)]
+        data = [self.__redis.get(k) for k in keys]
+        data = [User.model_validate_json(k) for k in data]
+        data = [k for k in data if func(k)]
+        return data
