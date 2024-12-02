@@ -19,12 +19,12 @@ def validate_token(token: str) -> dict:
         raise HTTPException(status_code=418, detail='Invalid token')
     return userdata
 @router.post('/create_session')
-async def create_session(username: str, pub_key: str = ''):
+def create_session(username: str, pub_key: str = ''):
     token = generate_token(username)
 
     user = User(username=username, token=token, public_key=pub_key)
 
-    if not await userRepo.add(user):
+    if not userRepo.add(user):
         raise HTTPException(status_code=418, detail='Username has taken')
 
     return {'token': token}
@@ -37,19 +37,19 @@ def find_user(token: str, username: str):
 
 
 @router.post('/send_message')
-async def send_message(token: str, to_username: str, text: str):
+def send_message(token: str, to_username: str, text: str):
     userdata = validate_token(token)
-    user = await userRepo.get(to_username)
+    user = userRepo.get(to_username)
     user.messages.append(Message(timestamp=int(time.time()), from_username=userdata['username'], text=text))
-    return {'ok': await userRepo.update(user)}
+    return {'ok': userRepo.update(user)}
 
 @router.post('/get_updates')
-async def get_updates(token: str):
+def get_updates(token: str):
     userdata = validate_token(token)
-    user = await userRepo.get(userdata['username'])
+    user = userRepo.get(userdata['username'])
     msgs = [{'timestamp': msg.timestamp, 'username': msg.from_username, 'text': msg.text} for msg in user.messages]
     user.messages = []
-    res = await userRepo.update(user)
+    res = userRepo.update(user)
     if not res:
         return {'ok': 0}
     return {'ok': 1, 'result': msgs}
