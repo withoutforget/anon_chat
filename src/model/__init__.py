@@ -1,2 +1,2 @@
-from user import User
-from message import  Message
+from src.model.message import Message
+from src.model.user import User

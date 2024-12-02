@@ -1,66 +1,55 @@
 import time
+from http.client import HTTPException
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from redis import Redis
 
+from src.logic import generate_token, decrypt_token
 from src.model import User, Message
 from src.repository import UserRepository
-from redis import Redis
-from src.logic import generate_token
 
-redis = Redis()
+redis = Redis(host='localhost', port=6379, db=0)
 userRepo = UserRepository(redis)
 router = APIRouter()
 
-@router.post('/create_session')
-def create_session(username: str, pub_key: str = ''):
-    if len(userRepo.select(lambda user: user.username == username)) != 0:
-        return {'ok': 0, 'message': 'Username has taken'}
-    try:
-        us_token = generate_token(32)
-        user = User(username=username, token=us_token, public_key=pub_key)
-        return {'ok': userRepo.add(user), 'token': us_token}
-    except Exception as e:
-        return {'ok': 0, 'message': e}
 
+def validate_token(token: str) -> dict:
+    userdata = decrypt_token(token)
+    if userdata is None:
+        raise HTTPException(status_code=418, detail='Invalid token')
+    return userdata
+@router.post('/create_session')
+async def create_session(username: str, pub_key: str = ''):
+    token = generate_token(username)
+
+    user = User(username=username, token=token, public_key=pub_key)
+
+    if not await userRepo.add(user):
+        raise HTTPException(status_code=418, detail='Username has taken')
+
+    return {'token': token}
 
 @router.post('/find_user')
 def find_user(token: str, username: str):
-    if len(userRepo.select(lambda user: user.token == token)) == 0:
-        return {'ok': 0, 'message': 'Invalid token'}
-    result = [(user.username, user.public_key) for user in userRepo.select(lambda user: username in user.username)]
-    return {'ok': True, 'result': result}
+    userdata = validate_token(token)
+    users = userRepo.get_users(template='user:*', func=lambda user: username in user.username)
+    return {'result': [(u.username, u.public_key) for u in users]}
 
 
 @router.post('/send_message')
-def send_message(token: str, to_username: str, text: str):
-    from_user = userRepo.select(lambda user: user.token == token)
-    if len(from_user) == 0:
-        return {'ok': 0, 'message': 'Invalid token'}
-
-    to_user = userRepo.select(lambda user: user.username == to_username)
-    if len(to_user) != 1:
-        return {'ok': 0, 'message': 'something went wrong'}
-
-    fu: User = from_user[0]
-    tu: User = to_user[0]
-
-    msg = Message(timestamp=int(time.time()), from_username=fu.username, text=text)
-
-    tu.messages.append(msg)
-
-    userRepo.update(tu.id, tu)
-
-    return {'ok': 1}
-
+async def send_message(token: str, to_username: str, text: str):
+    userdata = validate_token(token)
+    user = await userRepo.get(to_username)
+    user.messages.append(Message(timestamp=int(time.time()), from_username=userdata['username'], text=text))
+    return {'ok': await userRepo.update(user)}
 
 @router.post('/get_updates')
-def get_updates(token: str):
-    from_user = userRepo.select(lambda user: user.token == token)
-    if len(from_user) == 0:
-        return {'ok': 0, 'message': 'Invalid token'}
-    user = from_user[0]
-    result = [{'timestamp': msg.timestamp, 'username': msg.from_username, 'text': msg.text} for msg in user.messages]
+async def get_updates(token: str):
+    userdata = validate_token(token)
+    user = await userRepo.get(userdata['username'])
+    msgs = [{'timestamp': msg.timestamp, 'username': msg.from_username, 'text': msg.text} for msg in user.messages]
     user.messages = []
-    userRepo.update(user.id, user)
-    return {'ok': 1, 'result': result}
+    res = await userRepo.update(user)
+    if not res:
+        return {'ok': 0}
+    return {'ok': 1, 'result': msgs}
