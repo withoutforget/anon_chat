@@ -18,6 +18,7 @@ def validate_token(token: str) -> dict:
     if userdata is None:
         raise HTTPException(status_code=418, detail='Invalid token')
     return userdata
+
 @router.post('/create_session')
 def create_session(username: str, pub_key: str = ''):
     token = generate_token(username)
@@ -28,6 +29,22 @@ def create_session(username: str, pub_key: str = ''):
         raise HTTPException(status_code=418, detail='Username has taken')
 
     return {'token': token}
+
+
+@router.post('/update_token')
+def extend_token(token: str):
+    userdata = validate_token(token)
+    username = userdata['username']
+    token = generate_token(username)
+    if userRepo.update_timeout(username, token):
+        return {'ok': True, 'token': token}
+    return {'ok': 0}
+
+
+@router.post('/get_lifetime')
+def extend_token(token: str):
+    userdata = validate_token(token)
+    return {'ok': True, 'result': userRepo.get_timeout(userdata['username'])}
 
 @router.post('/find_user')
 def find_user(token: str, username: str):

@@ -7,7 +7,7 @@ JWT_KEY = 'ABCD'
 
 def generate_token(username: str) -> str:
     curr_time = int(time.time())
-    exp_time = 5 * 60 * 1000
+    exp_time = 10
     payload = {
         'username': username,
         'timestamp': curr_time,

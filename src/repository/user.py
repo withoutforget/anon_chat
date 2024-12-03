@@ -2,6 +2,7 @@ from redis import Redis
 
 from src.model import User
 
+EXP_TIME = 10
 
 class UserRepository:
     __redis:Redis
@@ -19,10 +20,23 @@ class UserRepository:
         r = self.get(user.username)
         if self.get(user.username) is not None:
             return False
-        return self.__redis.set(f'user:{user.username}', user.model_dump_json())
+        return self.__redis.set(f'user:{user.username}', user.model_dump_json(), ex=EXP_TIME)
 
     def update(self, user: User) -> bool:
-        return self.__redis.set(f'user:{user.username}', user.model_dump_json())
+        return self.__redis.set(f'user:{user.username}', user.model_dump_json(), ex=EXP_TIME)
+
+    def update_timeout(self, username: str, token: str) -> bool:
+        user = self.__redis.get(f'user:{username}')
+        if user is None: return False
+        user = User.model_validate_json(user)
+        user.token = token
+        return self.__redis.set(name=f'user:{username}', value=user.model_dump_json(), ex=EXP_TIME)
+
+    def get_timeout(self, username: str) -> int:
+        time = self.__redis.expiretime(f'user:{username}')
+        if time == -2:
+            return 0
+        return time
 
     def get_users(self, template: str, func=lambda _: True) -> list[User]:
 
